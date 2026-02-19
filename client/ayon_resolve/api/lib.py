@@ -407,6 +407,7 @@ def create_timeline_item(
         source_start: int = None,
         source_end: int = None,
         new_track: bool = True,
+        track_index: int = None,
 ) -> object:
     """
     Add media pool item to current or defined timeline.
@@ -417,8 +418,12 @@ def create_timeline_item(
         timeline_in (Optional[int]): timeline input frame (sequence frame)
         source_start (Optional[int]): media source input frame (sequence frame)
         source_end (Optional[int]): media source output frame (sequence frame)
-        new_track (bool): if True, add a new video track and place the clip
-            on it to avoid conflicts with existing clips. Defaults to True.
+        new_track (bool): if True, find an available video track and place
+            the clip on it to avoid conflicts with existing clips.
+            Defaults to True. Ignored if track_index is provided.
+        track_index (Optional[int]): explicit 1-based video track index
+            to place the clip on. When provided, overrides the automatic
+            track detection from new_track.
 
     Returns:
         object: resolve.TimelineItem
@@ -457,13 +462,17 @@ def create_timeline_item(
         if timecode_in:
             clip_data["recordFrame"] = timeline_in
 
-        # Find or create an empty video track to avoid conflicts
-        # with existing clips at the same timecode position
-        if new_track:
-            track_index = _find_available_video_track(
+        # Determine which video track to place the clip on
+        if track_index is not None:
+            # User specified an explicit track index
+            clip_data["trackIndex"] = track_index
+        elif new_track:
+            # Auto-find an available video track to avoid conflicts
+            # with existing clips at the same timecode position
+            auto_track = _find_available_video_track(
                 timeline, timeline_in, source_start, source_end
             )
-            clip_data["trackIndex"] = track_index
+            clip_data["trackIndex"] = auto_track
 
         # add to timeline
         output_timeline_item = media_pool.AppendToTimeline([clip_data])[0]

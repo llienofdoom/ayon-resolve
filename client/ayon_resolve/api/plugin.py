@@ -40,6 +40,10 @@ class ClipLoader:
         # try to get value from options or evaluate key value for `handles`
         self.with_handles = options.get("handles") is True
 
+        # try to get value from options for `track_index`
+        # 0 means auto-detect, any positive int is a specific track
+        self.track_index = int(options.get("track_index", 0))
+
         # try to get value from options or evaluate key value for `load_to`
         self.new_timeline = (
             options.get("newTimeline") or
@@ -200,6 +204,7 @@ class ClipLoader:
             timeline_in,
             source_in,
             source_out,
+            track_index=self.track_index if self.track_index > 0 else None,
         )
 
         print("Loading clips: `{}`".format(self.data["clip_name"]))
@@ -268,6 +273,16 @@ class TimelineItemLoader(LoaderPlugin):
             ],
             default="Original timing",
             help="Would you like to place it at original timing?"
+        ),
+        qargparse.Integer(
+            "track_index",
+            label="Video track index",
+            default=0,
+            help=(
+                "Set the 1-based video track index to load clips onto. "
+                "Use 0 for automatic track selection (finds first "
+                "available track without overlap)."
+            )
         )
     ]
 
