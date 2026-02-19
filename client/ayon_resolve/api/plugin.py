@@ -143,10 +143,14 @@ class ClipLoader:
         source_out = int(_clip_property("End"))
         source_duration = int(_clip_property("Frames"))
 
+        # Resolve's "End" clip property is the last frame (inclusive),
+        # but AppendToTimeline's "endFrame" is exclusive, so we need +1
+        source_out += 1
+
         # Trim clip start if slate is present
         if "slate" in self.data["versionAttributes"]["families"]:
             source_in += 1
-            source_duration = source_out - source_in + 1
+            source_duration = source_out - source_in
 
         if not self.with_handles:
             # Load file without the handles of the source media

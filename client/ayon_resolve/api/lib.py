@@ -340,12 +340,73 @@ def get_media_pool_item(filepath, root: object = None) -> object:
     return None
 
 
+def _find_available_video_track(timeline, timeline_in, source_start, source_end):
+    """Find a video track with no clip at the target range, or create one.
+
+    Iterates existing video tracks to find one where the target timecode
+    range is unoccupied. If no suitable track is found, a new video track
+    is added.
+
+    Args:
+        timeline: resolve Timeline object
+        timeline_in (int or None): target record frame on the timeline
+        source_start (int or None): source start frame
+        source_end (int or None): source end frame
+
+    Returns:
+        int: 1-based video track index to use
+    """
+    track_count = timeline.GetTrackCount("video")
+
+    # If no record frame is specified, clips append at the end so any
+    # empty track (or even a non-empty one) will work — just use the
+    # last track.
+    if timeline_in is None:
+        # Find a completely empty track first
+        for idx in range(1, track_count + 1):
+            items = timeline.GetItemListInTrack("video", idx)
+            if not items:
+                return idx
+        # No empty track, create a new one
+        timeline.AddTrack("video")
+        return timeline.GetTrackCount("video")
+
+    # Calculate the clip's occupy range on the timeline
+    if source_start is not None and source_end is not None:
+        duration = source_end - source_start
+    else:
+        duration = 0
+    clip_in = timeline_in
+    clip_out = timeline_in + duration
+
+    for idx in range(1, track_count + 1):
+        items = timeline.GetItemListInTrack("video", idx)
+        if not items:
+            return idx
+
+        # Check if any existing item on this track overlaps
+        has_overlap = False
+        for item in items:
+            item_start = item.GetStart()
+            item_end = item.GetEnd()
+            if item_start < clip_out and item_end > clip_in:
+                has_overlap = True
+                break
+        if not has_overlap:
+            return idx
+
+    # No suitable track found — create a new one
+    timeline.AddTrack("video")
+    return timeline.GetTrackCount("video")
+
+
 def create_timeline_item(
         media_pool_item: object,
         timeline: object = None,
         timeline_in: int = None,
         source_start: int = None,
         source_end: int = None,
+        new_track: bool = True,
 ) -> object:
     """
     Add media pool item to current or defined timeline.
@@ -356,6 +417,8 @@ def create_timeline_item(
         timeline_in (Optional[int]): timeline input frame (sequence frame)
         source_start (Optional[int]): media source input frame (sequence frame)
         source_end (Optional[int]): media source output frame (sequence frame)
+        new_track (bool): if True, add a new video track and place the clip
+            on it to avoid conflicts with existing clips. Defaults to True.
 
     Returns:
         object: resolve.TimelineItem
@@ -392,10 +455,15 @@ def create_timeline_item(
         if source_end:
             clip_data["endFrame"] = source_end
         if timecode_in:
-            # Note: specifying a recordFrame will fail to place the timeline
-            #  item if there's already an existing clip at that time on the
-            #  active track.
             clip_data["recordFrame"] = timeline_in
+
+        # Find or create an empty video track to avoid conflicts
+        # with existing clips at the same timecode position
+        if new_track:
+            track_index = _find_available_video_track(
+                timeline, timeline_in, source_start, source_end
+            )
+            clip_data["trackIndex"] = track_index
 
         # add to timeline
         output_timeline_item = media_pool.AppendToTimeline([clip_data])[0]
@@ -403,7 +471,8 @@ def create_timeline_item(
         # Adding the item may fail whilst Resolve will still return a
         # TimelineItem instance - however all `Get*` calls return None
         # Hence, we check whether the result is valid
-        if output_timeline_item.GetDuration() is None:
+        if (output_timeline_item is None
+                or output_timeline_item.GetDuration() is None):
             output_timeline_item = None
 
     assert output_timeline_item, AssertionError((
