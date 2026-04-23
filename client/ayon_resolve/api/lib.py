@@ -163,9 +163,6 @@ def get_current_resolve_project():
     project_manager = get_project_manager()
     return project_manager.GetCurrentProject()
 
-# alias for backward compatibility
-get_current_project = get_current_resolve_project
-
 
 def get_current_timeline(new=False):
     """Get current timeline object.
@@ -588,7 +585,8 @@ def get_current_timeline_items(
             "track": {
                 "name": _track_name,
                 "index": track_index,
-                "type": track_type}
+                "type": track_type,
+            }
         }
         # get track item object and its color
         for clip_index, ti in enumerate(_clips[track_index]):
@@ -611,10 +609,11 @@ def get_timeline_item_by_name(name: str) -> object:
 
     Returns:
         object: resolve.TimelineItem
+
     """
     for _ti_data in get_current_timeline_items():
         _ti_clip = _ti_data["clip"]["item"]
-        tag_data = get_timeline_item_pype_tag(_ti_clip)
+        tag_data = get_timeline_item_ayon_tag(_ti_clip)
         tag_name = tag_data.get("namespace")
         if not tag_name:
             continue
@@ -623,19 +622,16 @@ def get_timeline_item_by_name(name: str) -> object:
     return None
 
 
-# alias for backward compatibility
-get_pype_timeline_item_by_name = get_timeline_item_by_name
-
-
 def get_timeline_item_ayon_tag(timeline_item):
     """
     Get ayon track item tag created by creator or loader plugin.
 
-    Attributes:
-        trackItem (resolve.TimelineItem): resolve object
+    Args:
+        timeline_item (resolve.TimelineItem): resolve object
 
     Returns:
         dict: ayon tag data
+
     """
     return_tag = None
 
@@ -654,9 +650,6 @@ def get_timeline_item_ayon_tag(timeline_item):
                 return_tag = json.loads(data)
 
     return return_tag
-
-# alias for backward compatibility
-get_timeline_item_pype_tag = get_timeline_item_ayon_tag
 
 
 def set_timeline_item_ayon_tag(timeline_item, data=None):
@@ -698,13 +691,9 @@ def set_timeline_item_ayon_tag(timeline_item, data=None):
     return tag_data
 
 
-# alias for backward compatibility
-set_timeline_item_pype_tag = set_timeline_item_ayon_tag
-
-
 def imprint(timeline_item, data=None):
     """
-    Adding `Ayon data` into a timeline item track item tag.
+    Adding `AYON data` into a timeline item track item tag.
 
     Also including publish attribute into tag.
 
@@ -714,9 +703,9 @@ def imprint(timeline_item, data=None):
 
     Examples:
         data = {
-            'asset': 'sq020sh0280',
-            'family': 'render',
-            'subset': 'subsetMain'
+            'folderPath': '/shots/sq020sh0280',
+            'productBaseType': 'render',
+            'productName': 'renderMain'
         }
     """
     data = data or {}
@@ -1266,7 +1255,7 @@ def iter_all_media_pool_clips(root=None):
         root (Optional[resolve.Folder]): root folder / bin object.
             When None, defaults to media pool root folder.
     """
-    root = root or get_current_project().GetMediaPool().GetRootFolder()
+    root = root or get_current_resolve_project().GetMediaPool().GetRootFolder()
     queue = [root]
     for folder in queue:
         for clip in folder.GetClipList():
@@ -1277,13 +1266,13 @@ def iter_all_media_pool_clips(root=None):
 def export_timeline_otio_native(timeline, filepath):
     """Get timeline otio filepath.
 
-    Only supported from Resolve 19.5
+    Only supported from Resolve 18.5
 
     Example:
         # Native otio export is available from Resolve 18.5
         # [major, minor, patch, build, suffix]
         resolve_version = bmdvr.GetVersion()
-        if resolve_version[0] < 18 or resolve_version[1] < 5:
+        if tuple(resolve_version[:2]) < (18, 5):
             # if it is lower then use ayon's otio exporter
             otio_timeline = davinci_export.create_otio_timeline(
                 resolve_project, timeline=timeline)
