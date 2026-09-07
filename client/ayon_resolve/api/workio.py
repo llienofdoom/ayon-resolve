@@ -60,29 +60,62 @@ def save_file(filepath):
 
     rename_db_project = settings["resolve"].get("rename_db_project_on_increment", True)
     if "Untitled Project" in current_wf.stem:
-        # saving initial workfile from currently opened project
-        project_manager.CreateProject(incoming_wf.stem)
+        # Saving initial workfile from currently opened (untitled) project.
+        # NOTE: The three branches below must stay mutually exclusive.
+        # `CreateProject` closes the current project, which invalidates the
+        # `resolve_project` handle captured above. Falling through into the
+        # increment branch and calling `SetName` on that stale handle crashes
+        # Resolve (access violation in the scripting bridge).
+        new_project = project_manager.CreateProject(incoming_wf.stem)
+        if not new_project:
+            raise RuntimeError(
+                f"Failed to create project `{incoming_wf.stem}`. A project "
+                "with that name probably already exists in the current "
+                "project library. Rename or remove it and save again."
+            )
         project_manager.SaveProject()
         exported = project_manager.ExportProject(incoming_wf.stem, incoming_wf.as_posix())
         log.info(f"New project {incoming_wf.stem} exported: {exported}")
+        return bool(exported)
+
     if current_wf.stem != incoming_wf.stem:
         # workfile shall be incremented
         if rename_db_project:
             # increment with local renaming
-            resolve_project.SetName(incoming_wf.stem)
+            # Re-fetch the current project right before use so we never act
+            # on a stale handle.
+            resolve_project = get_current_resolve_project()
+            renamed = resolve_project.SetName(incoming_wf.stem)
+            if not renamed:
+                raise RuntimeError(
+                    f"Failed to rename project `{current_wf.stem}` to "
+                    f"`{incoming_wf.stem}`. A project with that name probably "
+                    "already exists in the current project library."
+                )
+            project_manager.SaveProject()
             exported = project_manager.ExportProject(incoming_wf.stem, incoming_wf.as_posix())
             log.info(f"Incremented workfile with local rename to {incoming_wf.as_posix()}: {exported}")
-        else:
-            # increment without local renaming but reimport
-            exported = project_manager.ExportProject(current_wf.stem, current_wf.as_posix())
-            exported = project_manager.ExportProject(current_wf.stem, incoming_wf.as_posix())
-            project_manager.ImportProject(incoming_wf.as_posix())
-            project_manager.LoadProject(incoming_wf.stem)
-            log.info(f"Incremented workfile with reimport to {incoming_wf.as_posix()}: {exported}")
-    else:
-        # workfile export without increment
-        exported = project_manager.ExportProject(incoming_wf.stem, incoming_wf.as_posix())
-        log.info(f"Project exported without increment to {incoming_wf.as_posix()}: {exported}")
+            return bool(exported)
+
+        # increment without local renaming but reimport
+        exported = project_manager.ExportProject(current_wf.stem, current_wf.as_posix())
+        exported = project_manager.ExportProject(current_wf.stem, incoming_wf.as_posix())
+        if not exported:
+            raise RuntimeError(
+                f"Failed to export project to {incoming_wf.as_posix()}"
+            )
+        if not project_manager.ImportProject(incoming_wf.as_posix()):
+            raise RuntimeError(
+                f"Failed to import project from {incoming_wf.as_posix()}"
+            )
+        project_manager.LoadProject(incoming_wf.stem)
+        log.info(f"Incremented workfile with reimport to {incoming_wf.as_posix()}: {exported}")
+        return True
+
+    # workfile export without increment
+    exported = project_manager.ExportProject(incoming_wf.stem, incoming_wf.as_posix())
+    log.info(f"Project exported without increment to {incoming_wf.as_posix()}: {exported}")
+    return bool(exported)
 
 
 def open_file(filepath):
